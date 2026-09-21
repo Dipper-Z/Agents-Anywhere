@@ -235,4 +235,23 @@ test("twenty preview switches keep one editor and do not reload the directory", 
   t.diagnostic(`Initial open + 20 switches: ${listings} directory list, ${reads} text reads, 1 editor, 1 live model`)
 })
 
+test("Windows file browser starts at the project instead of the drive list", async t => {
+  const root = "E:\\dsh-desktop\\开始测试DSHD"
+  const filePath = `${root}\\README.md`
+  const listed = []
+  t.mock.method(dashboardApi, "connectorFsList", async (_token, _connector, request) => {
+    listed.push(request)
+    return { result: { path: request.path, entries: request.path === root
+      ? [{ type: "file", path: filePath, name: "README.md" }]
+      : [{ type: "directory", path: "C:/", name: "C:" }] } }
+  })
+  const f = await fixture(t, FilesPanelBody)
+  await f.render({ token: "fixture", connectorId: "windows-connector", connectorDeviceOs: "windows", root, variant: "tab" })
+  assert.deepEqual(listed, [{ root, path: root }])
+  assert.ok([...f.host.querySelectorAll("[data-fs-entry-path]")].some(row => row.dataset.fsEntryPath === filePath))
+  assert.equal(f.host.querySelector('[data-fs-entry-path="C:/"]'), null)
+  assert.ok(f.host.textContent.includes("开始测试DSHD"))
+  assert.equal(f.host.querySelector('[data-testid="files-preview"]'), null)
+})
+
 test.after(() => { mockHooks.deregister(); sourceHooks.deregister() })

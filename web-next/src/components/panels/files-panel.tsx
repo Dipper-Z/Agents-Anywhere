@@ -210,7 +210,7 @@ export function FilesPanelBody({
       return
     }
     const requestId = ++loadRequestIdRef.current
-    const initialPath = isWindowsConnector ? "" : effectiveRoot
+    const initialPath = effectiveRoot
     setPath(initialPath)
     setCurrentPath(initialPath)
     setEntries([])
