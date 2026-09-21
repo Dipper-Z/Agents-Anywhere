@@ -153,14 +153,14 @@ export function FilesPanelBody({
 
   const toggleTree = React.useCallback(() => {
     const panel = treePanelRef.current
-    if (treeOpen) {
-      panel?.collapse()
-      setTreeOpen(false)
-      return
+    if (!panel) return
+    if (panel.isCollapsed()) {
+      panel.expand()
+    } else {
+      panel.collapse()
     }
-    panel?.expand()
-    setTreeOpen(true)
-  }, [treeOpen])
+    setTreeOpen(!panel.isCollapsed())
+  }, [])
 
   const loadDir = React.useCallback(
     async (nextPath: string) => {
@@ -774,7 +774,7 @@ export function FilesPanelBody({
                 panelRef={treePanelRef}
                 collapsible={Boolean(selectedFile)}
                 collapsedSize="0px"
-                defaultSize={selectedFile ? (treeOpen ? "40%" : "0%") : "100%"}
+                defaultSize={selectedFile ? "40%" : "100%"}
                 minSize={compact ? "20%" : "160px"}
                 maxSize={selectedFile ? "65%" : "100%"}
                 groupResizeBehavior="preserve-pixel-size"
@@ -783,8 +783,8 @@ export function FilesPanelBody({
                   setTreeOpen(!collapsed)
                 }}
               >
-                <aside className={cn("aa-fs-tree", !treeOpen && "collapsed")} aria-label={t("fileTree")}>
-                  {treeOpen ? fileTreeBrowser : null}
+                <aside className={cn("aa-fs-tree", !treeOpen && "collapsed")} aria-label={t("fileTree")} inert={!treeOpen || undefined} aria-hidden={!treeOpen}>
+                  {fileTreeBrowser}
                 </aside>
               </ResizablePanel>
             </ResizablePanelGroup>

@@ -6,7 +6,7 @@ import { JSDOM } from "jsdom"
 import { registerSource } from "./helpers/onboarding-source.mjs"
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "https://fixture.example/", pretendToBeVisual: true })
-for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLInputElement", "HTMLButtonElement", "Element", "Node", "NodeFilter", "Event", "CustomEvent", "MutationObserver", "getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame"]) {
+for (const name of ["DOMRect", "window", "document", "navigator", "HTMLElement", "HTMLInputElement", "HTMLButtonElement", "Element", "Node", "NodeFilter", "Event", "CustomEvent", "MutationObserver", "getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame"]) {
   Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] })
 }
 HTMLElement.prototype.scrollIntoView = () => {}
@@ -252,6 +252,74 @@ test("Windows file browser starts at the project instead of the drive list", asy
   assert.equal(f.host.querySelector('[data-fs-entry-path="C:/"]'), null)
   assert.ok(f.host.textContent.includes("开始测试DSHD"))
   assert.equal(f.host.querySelector('[data-testid="files-preview"]'), null)
+})
+
+test("a new preview collapses on the first click and preserves its tree and resized width", async t => {
+  const observers = []
+  const previousObserver = window.ResizeObserver
+  window.ResizeObserver = class {
+    constructor(callback) { this.callback = callback; this.targets = new Set(); observers.push(this) }
+    observe(target) { this.targets.add(target) }
+    unobserve(target) { this.targets.delete(target) }
+    disconnect() { this.targets.clear() }
+  }
+  const oldRect = HTMLElement.prototype.getBoundingClientRect
+  HTMLElement.prototype.getBoundingClientRect = function () {
+    const tree = this.dataset.testid === "files-tree"
+    const separator = this.dataset.slot === "resizable-handle"
+    const preview = this.parentElement?.querySelector('[data-testid="files-preview"]')
+    const x = tree || separator ? (preview?.offsetWidth ?? 600) : 0
+    return new DOMRect(x, 0, separator ? 1 : this.offsetWidth, 700)
+  }
+  const oldLeft = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetLeft")
+  Object.defineProperty(HTMLElement.prototype, "offsetLeft", { configurable: true, get() { return this.getBoundingClientRect().x } })
+  const oldWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth")
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get() {
+    if (this.dataset.slot === "resizable-handle") return 1
+    if (this.hasAttribute("data-panel")) return 10 * parseFloat(this.style.flexGrow || this.style.flexBasis || "50")
+    return 1000
+  } })
+  t.after(() => {
+    window.ResizeObserver = previousObserver
+    HTMLElement.prototype.getBoundingClientRect = oldRect
+    if (oldLeft) Object.defineProperty(HTMLElement.prototype, "offsetLeft", oldLeft)
+    else delete HTMLElement.prototype.offsetLeft
+    if (oldWidth) Object.defineProperty(HTMLElement.prototype, "offsetWidth", oldWidth)
+    else delete HTMLElement.prototype.offsetWidth
+  })
+  let listings = 0
+  t.mock.method(dashboardApi, "connectorFsList", async (_token, _connector, { path }) => {
+    listings++
+    return { result: { path, entries: path === "/repo"
+      ? [{ type: "directory", path: "/repo/src", name: "src" }]
+      : [{ type: "file", path: "/repo/src/b.cpp", name: "b.cpp" }] } }
+  })
+  t.mock.method(dashboardApi, "connectorFsReadText", async (_token, _connector, _root, path) => textFile(path))
+  const f = await fixture(t, FilesPanelBody)
+  await f.render({ token: "fixture", connectorId: "connector", root: "/repo", variant: "tab",
+    initialFile: { source: "workspace", root: "/repo", browsePath: "/repo", browseExpandedPaths: ["/repo/src"], path: "/repo/src/b.cpp", name: "b.cpp" },
+  })
+  await act(async () => {
+    for (const observer of observers) observer.callback([...observer.targets].map(target => ({ target, borderBoxSize: [{ inlineSize: target.offsetWidth, blockSize: 700 }] })))
+  })
+  const tree = f.host.querySelector('[role="tree"]')
+  const panel = f.host.querySelector('[data-testid="files-tree"]')
+  const toggle = f.host.querySelector(".aa-fs-tree-toggle")
+  const handle = f.host.querySelector('[data-slot="resizable-handle"]')
+  await act(async () => handle.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })))
+  const width = panel.style.flexGrow
+  assert.ok(Number(width) > 40, "keyboard resize increases the initial width")
+  const before = listings
+  await act(async () => toggle.click())
+  assert.equal(toggle.getAttribute("aria-expanded"), "false")
+  assert.equal(Number(panel.style.flexGrow), 0)
+  assert.equal(f.host.querySelector('[role="tree"]'), tree)
+  await act(async () => toggle.click())
+  assert.equal(toggle.getAttribute("aria-expanded"), "true")
+  assert.equal(panel.style.flexGrow, width)
+  assert.equal(f.host.querySelector('[role="tree"]'), tree)
+  assert.equal(f.host.querySelector('[data-fs-entry-path="/repo/src"]').getAttribute("aria-expanded"), "true")
+  assert.equal(listings, before)
 })
 
 test.after(() => { mockHooks.deregister(); sourceHooks.deregister() })
