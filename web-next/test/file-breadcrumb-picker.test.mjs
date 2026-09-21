@@ -16,6 +16,7 @@ const { createRoot } = await import("react-dom/client")
 const { NextIntlClientProvider } = await import("next-intl")
 const hooks = registerSource()
 const { FileBreadcrumbPicker } = await import("../src/components/panels/file-breadcrumb-picker.tsx")
+const { LazyFileTree } = await import("../src/components/panels/lazy-file-tree.tsx")
 hooks.deregister()
 const messages = JSON.parse(readFileSync(new URL("../messages/en.json", import.meta.url), "utf8"))
 const directory = { name: "src", path: "/repo/src", type: "directory" }
@@ -24,14 +25,17 @@ const file = { name: "a.ts", path: "/repo/src/a.ts", type: "file" }
 
 async function mount(t, loadDirectory) {
   const selected = []
+  const events = []
   const container = document.createElement("div")
   document.body.append(container)
   const root = createRoot(container)
   await act(async () => root.render(h(NextIntlClientProvider, { locale: "en", timeZone: "UTC", messages },
     h(FileBreadcrumbPicker, { path: directory.path, label: "src", current: true, directory: true,
-      caseInsensitivePaths: false, loadDirectory, onSelect: (entry) => selected.push(entry.path) }))))
+      caseInsensitivePaths: false, loadDirectory,
+      onBrowse: () => events.push("pin-current"),
+      onSelect: (entry) => { selected.push(entry.path); events.push("open-preview") } }))))
   t.after(async () => { await act(async () => root.unmount()); container.remove() })
-  return { selected, trigger: container.querySelector("button") }
+  return { selected, events, trigger: container.querySelector("button") }
 }
 const click = async (element) => { assert.ok(element); await act(async () => element.click()) }
 const row = (path) => document.querySelector(`[data-fs-entry-path="${path}"]`)
@@ -44,12 +48,14 @@ test("picker opens siblings, expands the current directory, and selects files", 
     return { path, entries: path === "/repo" ? [directory, sibling] : [file] }
   })
   assert.deepEqual(calls, [])
+  assert.deepEqual(picker.events, [])
   await click(picker.trigger)
   assert.deepEqual(calls, ["/repo", "/repo/src"])
   assert.ok(row(sibling.path))
   assert.equal(row(directory.path).getAttribute("aria-expanded"), "true")
   await click(row(file.path))
   assert.deepEqual(picker.selected, [file.path])
+  assert.deepEqual(picker.events, ["pin-current", "open-preview"])
   assert.equal(document.querySelector('[role="dialog"]'), null)
 })
 
@@ -104,4 +110,30 @@ test("closing a picker ignores its outstanding request after reopening", async (
   await act(async () => pending[0].resolve({ path: "/repo", entries: [file] }))
   assert.ok(row(sibling.path))
   assert.equal(row(file.path), null)
+})
+
+test("file tree distinguishes a single-click preview from a double-click kept file", async (t) => {
+  const opened = []
+  const kept = []
+  const container = document.createElement("div")
+  document.body.append(container)
+  const root = createRoot(container)
+  t.after(async () => { await act(async () => root.unmount()); container.remove() })
+  await act(async () => root.render(h(LazyFileTree, {
+    identity: "double-click-test", rootPath: "/repo/src", entries: [file], canLoad: true,
+    labels: { empty: "empty", loading: "loading", noConnector: "offline", retry: "retry", truncated: "truncated" },
+    loadDirectory: async () => ({ path: "/repo/src", entries: [] }),
+    onOpenFile: (entry) => opened.push(entry.path),
+    onKeepFileOpen: (entry) => kept.push(entry.path),
+  })))
+  const item = row(file.path)
+  const mouse = (type, detail) => item.dispatchEvent(new window.MouseEvent(type, { bubbles: true, detail }))
+  await act(async () => { mouse("click", 1); mouse("click", 2); mouse("dblclick", 2) })
+  assert.deepEqual(kept, [file.path])
+  assert.deepEqual(opened, [file.path])
+  await act(async () => { mouse("click", 1) })
+  assert.deepEqual(opened, [file.path, file.path])
+  // Keyboard activation should not wait for a possible mouse double-click.
+  await key(item, "Enter")
+  assert.deepEqual(opened, [file.path, file.path, file.path])
 })

@@ -11,7 +11,7 @@ import { filePathBreadcrumbParent } from "@/lib/file-path-breadcrumb"
 import { cn } from "@/lib/utils"
 
 export function FileBreadcrumbPicker({
-  path, label, current, directory, caseInsensitivePaths, loadDirectory, onSelect,
+  path, label, current, directory, caseInsensitivePaths, loadDirectory, onSelect, onBrowse,
 }: {
   path: string
   label: string
@@ -20,6 +20,7 @@ export function FileBreadcrumbPicker({
   caseInsensitivePaths: boolean
   loadDirectory: (path: string) => Promise<FsListResult>
   onSelect: (entry: FsEntry) => void
+  onBrowse?: () => void
 }) {
   const t = useTranslations("dashboard.panels.files")
   const [open, setOpen] = React.useState(false)
@@ -47,7 +48,10 @@ export function FileBreadcrumbPicker({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(nextOpen) => {
+      if (nextOpen) onBrowse?.()
+      setOpen(nextOpen)
+    }}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"

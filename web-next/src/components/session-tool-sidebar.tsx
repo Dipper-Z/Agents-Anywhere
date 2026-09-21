@@ -48,7 +48,7 @@ import {
   useStoredSessionToolSidebarState,
 } from "@/components/session-tool-sidebar-state"
 import { SessionFilePreviewProvider } from "@/components/session/session-file-preview-context"
-import type { SessionFilePreviewTarget } from "@/components/session/session-file-preview-context"
+import type { SessionFilePreviewTarget, OpenSessionFilePreview, SessionFileOpenOptions } from "@/components/session/session-file-preview-context"
 import { dashboardApi } from "@/features/dashboard/api"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { isApiError } from "@/lib/api/errors"
@@ -85,7 +85,8 @@ export type SessionToolSidebarController = SessionToolTabsState & {
   toggleExpanded: () => void
   openTool: (kind: SessionToolKind) => void
   openReview: (target?: SessionReviewTarget) => void
-  openFilePreview: (target: SessionFilePreviewTarget) => void
+  openFilePreview: OpenSessionFilePreview
+  pinTab: (id: string) => void
   activateTab: (id: string) => void
   closeTab: (id: string) => Promise<boolean>
   setTabDirty: (id: string, dirty: boolean) => void
@@ -174,11 +175,12 @@ export function useSessionToolSidebar({
       if (!store.isShuttingDown()) onTerminalError?.(error instanceof Error ? error.message : String(error))
     })
   }, [dispatch, onTerminalError, openTerminal, sessionId, store])
-  const openFilePreview = React.useCallback((target: SessionFilePreviewTarget) => {
+  const openFilePreview = React.useCallback((target: SessionFilePreviewTarget, options?: SessionFileOpenOptions) => {
     if (!sessionId || store.isShuttingDown()) return
     const tabId = createClientId("files_preview")
-    dispatch({ type: "open-tool", tab: createSessionFilePreviewTab(tabId, target) })
+    dispatch({ type: "open-tool", tab: createSessionFilePreviewTab(tabId, target), preview: options?.preview, sourceTabId: options?.sourceTabId })
   }, [dispatch, sessionId, store])
+  const pinTab = React.useCallback((id: string) => dispatch({ type: "pin-tab", id }), [dispatch])
   const activateTab = React.useCallback(
     (id: string) => dispatch({ type: "activate-tab", id }),
     [dispatch],
@@ -233,6 +235,7 @@ export function useSessionToolSidebar({
       openTool,
       openReview,
       openFilePreview,
+      pinTab,
       activateTab,
       closeTab,
       setTabTitle,
@@ -245,6 +248,7 @@ export function useSessionToolSidebar({
       closeTab,
       collapseSidebar,
       openFilePreview,
+      pinTab,
       openTool,
       openReview,
       setTabTitle,
@@ -689,10 +693,11 @@ export function SessionToolSidebar({
                   aria-controls={`${domIdPrefix}-panel-${tab.id}`}
                   tabIndex={active ? 0 : -1}
                   onClick={() => controller.activateTab(tab.id)}
+                  onDoubleClick={() => controller.pinTab(tab.id)}
                   className="h-8 min-w-0 flex-1 justify-start rounded-xl px-2 hover:bg-transparent"
                 >
                   <Icon data-icon="inline-start" />
-                  <span className="truncate">{label}{tab.dirty ? " •" : ""}</span>
+                  <span className={cn("truncate", tab.preview && "italic")}>{label}{tab.dirty ? " •" : ""}</span>
                 </Button>
                 <Button
                   type="button"
@@ -795,6 +800,8 @@ export function SessionToolSidebar({
                     root={root}
                     onTitleChange={controller.setTabTitle}
                     onDirtyChange={controller.setTabDirty}
+                    onOpenFilePreview={controller.openFilePreview}
+                    onPinTab={controller.pinTab}
                   />
                 ) : null}
               </section>
@@ -816,6 +823,8 @@ function SessionFilesToolPanel({
   root,
   onTitleChange,
   onDirtyChange,
+  onOpenFilePreview,
+  onPinTab,
 }: {
   tabId: string
   filePreview: SessionFilePreviewTarget | null
@@ -825,6 +834,8 @@ function SessionFilesToolPanel({
   root: string
   onDirtyChange: (id: string, dirty: boolean) => void
   onTitleChange: (id: string, title: string | null) => void
+  onOpenFilePreview: OpenSessionFilePreview
+  onPinTab: (id: string) => void
 }) {
   const handleDirtyChange = React.useCallback(
     (dirty: boolean) => onDirtyChange(tabId, dirty), [onDirtyChange, tabId],
@@ -832,6 +843,10 @@ function SessionFilesToolPanel({
   const handleTitleChange = React.useCallback(
     (title: string | null) => onTitleChange(tabId, title),
     [onTitleChange, tabId],
+  )
+  const handleOpenFilePreview: OpenSessionFilePreview = React.useCallback(
+    (file, options) => onOpenFilePreview(file, { ...options, sourceTabId: tabId }),
+    [onOpenFilePreview, tabId],
   )
 
   return (
@@ -844,6 +859,8 @@ function SessionFilesToolPanel({
       initialFile={filePreview}
       onSelectedFileNameChange={handleTitleChange}
       onDirtyChange={handleDirtyChange}
+      onOpenFilePreview={handleOpenFilePreview}
+      onKeepFileOpen={() => onPinTab(tabId)}
     />
   )
 }

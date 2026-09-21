@@ -10,9 +10,13 @@ export type SessionFilePreviewTarget = {
   sourceUrl?: string
   mediaType?: string
   size?: number
+  // Supplied by a directory listing: the target is already a resolved file.
+  browsePath?: string
+  browseExpandedPaths?: readonly string[]
 }
 
-export type OpenSessionFilePreview = (target: SessionFilePreviewTarget) => void
+export type SessionFileOpenOptions = { preview?: boolean; sourceTabId?: string }
+export type OpenSessionFilePreview = (target: SessionFilePreviewTarget, options?: SessionFileOpenOptions) => void
 
 const SessionFilePreviewContext = React.createContext<OpenSessionFilePreview | null>(null)
 

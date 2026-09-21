@@ -53,8 +53,9 @@ import {
 } from "@/components/ui/resizable"
 import { FilePathBreadcrumb, FilePreviewSurface } from "@/components/file-preview-page"
 import { LazyFileTree } from "@/components/panels/lazy-file-tree"
+import { filePathBreadcrumbParent } from "@/lib/file-path-breadcrumb"
 import { FileBreadcrumbPicker } from "@/components/panels/file-breadcrumb-picker"
-import type { SessionFilePreviewTarget } from "@/components/session/session-file-preview-context"
+import type { SessionFilePreviewTarget, OpenSessionFilePreview } from "@/components/session/session-file-preview-context"
 import {
   findSessionFileTargetEntry,
   resolveSessionFilePath,
@@ -85,6 +86,8 @@ type FilesPanelBodyProps = {
   onPopupBlocked?: () => void
   initialFile?: SessionFilePreviewTarget | null
   onDirtyChange?: (dirty: boolean) => void
+  onOpenFilePreview?: OpenSessionFilePreview
+  onKeepFileOpen?: () => void
   onSelectedFileNameChange?: (name: string | null) => void
 }
 
@@ -100,6 +103,8 @@ export function FilesPanelBody({
   initialFile,
   onSelectedFileNameChange,
   onDirtyChange,
+  onOpenFilePreview,
+  onKeepFileOpen,
 }: FilesPanelBodyProps) {
   const { ref: panelRef, compact } = useCompactPanel()
   const t = useTranslations("dashboard.panels.files")
@@ -110,18 +115,26 @@ export function FilesPanelBody({
   const treeAllowed = sessionFileTreeAllowed(initialFile)
   const [path, setPath] = React.useState(".")
   const [currentPath, setCurrentPath] = React.useState(".")
+  const currentPathRef = React.useRef(currentPath)
+  currentPathRef.current = currentPath
   const [entries, setEntries] = React.useState<FsEntry[]>([])
   const [entriesTruncated, setEntriesTruncated] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [contextEntry, setContextEntry] = React.useState<FsEntry | null>(null)
   const [selectedFile, setSelectedFile] = React.useState<SessionFilePreviewTarget | null>(
-    treeAllowed ? null : initialFile ?? null,
+    initialFile ?? null,
   )
   const [panelTitle, setPanelTitle] = React.useState<string | null>(initialFile?.name ?? null)
   const [treeOpen, setTreeOpen] = React.useState(treeAllowed)
   const [treeResizeActive, setTreeResizeActive] = React.useState(false)
   const loadRequestIdRef = React.useRef(0)
+  const expandedTreePathsRef = React.useRef<readonly string[]>(initialFile?.browseExpandedPaths ?? [])
+  const handleExpandedPathsChange = React.useCallback((paths: string[]) => {
+    expandedTreePathsRef.current = paths
+  }, [])
+  const directoryContextRef = React.useRef<string | null>(null)
+  const directoryContext = `${connectorId}:${effectiveRoot}:${connectorDeviceOs ?? ""}`
   const treePanelRef = React.useRef<PanelImperativeHandle | null>(null)
 
   const { confirmDiscard, discardDialog } = useDiscardFileChanges()
@@ -165,6 +178,7 @@ export function FilesPanelBody({
         if (requestId !== loadRequestIdRef.current) return
         const resolvedPath = response.result.path || target
         setEntries(response.result.entries)
+        directoryContextRef.current = directoryContext
         setEntriesTruncated(Boolean(response.result.truncated))
         setCurrentPath(resolvedPath)
         setPath(resolvedPath)
@@ -175,11 +189,26 @@ export function FilesPanelBody({
         if (requestId === loadRequestIdRef.current) setLoading(false)
       }
     },
-    [connectorId, effectiveRoot, isWindowsConnector, token],
+    [connectorId, directoryContext, effectiveRoot, isWindowsConnector, token],
   )
 
   React.useEffect(() => {
     const token = tokenRef.current
+    if (initialFile?.source === "workspace" && initialFile.browsePath !== undefined && canLoad) {
+      setSelectedFile(initialFile)
+      setPanelTitle(initialFile.name)
+      // File-tree selections already have canonical paths. Preserve the loaded tree,
+      // its expanded branches, and the split layout while changing only the preview.
+      if (directoryContextRef.current !== directoryContext || currentPathRef.current !== initialFile.browsePath) {
+        void loadDir(initialFile.browsePath)
+      }
+      else {
+        loadRequestIdRef.current += 1
+        setLoading(false)
+        setError(null)
+      }
+      return
+    }
     const requestId = ++loadRequestIdRef.current
     const initialPath = isWindowsConnector ? "" : effectiveRoot
     setPath(initialPath)
@@ -197,7 +226,7 @@ export function FilesPanelBody({
       return
     }
 
-    setSelectedFile(null)
+    setSelectedFile(initialFile ?? null)
     if (!token || !connectorId || !canLoad) {
       setSelectedFile(initialFile ?? null)
       setLoading(false)
@@ -217,6 +246,7 @@ export function FilesPanelBody({
           setPath(resolvedPath)
           setCurrentPath(resolvedPath)
           setEntries(response.result.entries)
+          directoryContextRef.current = directoryContext
           setEntriesTruncated(Boolean(response.result.truncated))
           return
         }
@@ -227,6 +257,7 @@ export function FilesPanelBody({
         })
         if (requestId !== loadRequestIdRef.current) return
 
+        directoryContextRef.current = directoryContext
         const targetMetadata = resolveSessionFileTargetMetadata(
           targetResponse.result,
           isWindowsConnector,
@@ -336,7 +367,7 @@ export function FilesPanelBody({
     }
 
     void initialize()
-  }, [canLoad, connectorId, effectiveRoot, initialFile, isWindowsConnector, treeAllowed])
+  }, [canLoad, connectorId, directoryContext, effectiveRoot, initialFile, isWindowsConnector, loadDir, treeAllowed])
 
   const parentPath = React.useMemo(
     () => sessionFileParentPath(currentPath || path),
@@ -368,8 +399,25 @@ export function FilesPanelBody({
     [connectorId, effectiveRoot, t, token],
   )
 
-  const openEntry = async (entry: FsEntry) => {
-    if (variant === "tab" && entry.path === selectedFile?.path) return
+  const openEntry = async (entry: FsEntry, keepOpen = false) => {
+    if (variant === "tab" && entry.path === selectedFile?.path) {
+      if (keepOpen) onKeepFileOpen?.()
+      return
+    }
+    if (variant === "tab" && onOpenFilePreview && (entry.type === "file" || entry.type === "symlink")) {
+      const normalize = (value: string) => {
+        const path = value.replaceAll("\\", "/").replace(/\/+$/, "")
+        return isWindowsConnector ? path.toLowerCase() : path
+      }
+      // Breadcrumbs can select a file outside the tree's current browsing root.
+      const withinTree = normalize(entry.path).startsWith(`${normalize(currentPath)}/`)
+      onOpenFilePreview({
+        source: "workspace", name: entry.name, path: entry.path, root: effectiveRoot,
+        browsePath: withinTree ? currentPath : filePathBreadcrumbParent(entry.path),
+        browseExpandedPaths: withinTree ? [...expandedTreePathsRef.current] : [],
+      }, { preview: !keepOpen })
+      return
+    }
     if (entry.path !== selectedFile?.path && dirtyRef.current && !await confirmDiscard()) return
     if (entry.type === "directory") {
       void loadDir(entry.path)
@@ -513,6 +561,10 @@ export function FilesPanelBody({
               canLoad={canLoad}
               caseInsensitivePaths={isWindowsConnector}
               selectedPath={selectedFile?.path}
+              revealSelectedPath
+              initialExpandedPaths={initialFile?.browseExpandedPaths}
+              restoredExpandedPaths={initialFile?.browseExpandedPaths}
+              onExpandedPathsChange={handleExpandedPathsChange}
               labels={{
                 empty: t("empty"),
                 loading: t("loading"),
@@ -522,6 +574,7 @@ export function FilesPanelBody({
               }}
               loadDirectory={loadTreeDirectory}
               onOpenFile={openEntry}
+              onKeepFileOpen={onOpenFilePreview ? (entry) => void openEntry(entry, true) : undefined}
               onContextEntryChange={setContextEntry}
             />
           </ScrollArea>
@@ -609,7 +662,7 @@ export function FilesPanelBody({
       <section className="aa-fs-preview" aria-label={t("preview")}>
         {selectedFile ? (
           <FilePreviewSurface
-            key={`${connectorId}:${effectiveRoot}:${selectedFile.path}:${selectedFile.sourceUrl ?? ""}`}
+            key={`${connectorId}:${effectiveRoot}:${selectedFile.source}:${selectedFile.sourceUrl ?? ""}`}
             token={token ?? null}
             connectorId={connectorId ?? ""}
             root={effectiveRoot}
@@ -661,6 +714,7 @@ export function FilesPanelBody({
                   caseInsensitivePaths={isWindowsConnector}
                   loadDirectory={loadTreeDirectory}
                   onSelect={(entry) => void openEntry(entry)}
+                  onBrowse={onKeepFileOpen}
                 />
               ) : undefined}
             />

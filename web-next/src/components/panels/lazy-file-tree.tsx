@@ -31,10 +31,14 @@ type LazyFileTreeProps = {
   canLoad: boolean
   caseInsensitivePaths?: boolean
   selectedPath?: string | null
+  revealSelectedPath?: boolean
   initialExpandedPaths?: readonly string[]
+  restoredExpandedPaths?: readonly string[]
+  onExpandedPathsChange?: (paths: string[]) => void
   labels: LazyFileTreeLabels
   loadDirectory: (path: string) => Promise<FsListResult>
   onOpenFile: (entry: FsEntry) => void
+  onKeepFileOpen?: (entry: FsEntry) => void
   onContextEntryChange?: (entry: FsEntry | null) => void
   renderTrailing?: (entry: FsEntry) => React.ReactNode
 }
@@ -58,10 +62,14 @@ export function LazyFileTree({
   canLoad,
   caseInsensitivePaths = false,
   selectedPath = null,
+  revealSelectedPath = false,
   initialExpandedPaths = [],
+  restoredExpandedPaths,
+  onExpandedPathsChange,
   labels,
   loadDirectory,
   onOpenFile,
+  onKeepFileOpen,
   onContextEntryChange,
   renderTrailing,
 }: LazyFileTreeProps) {
@@ -97,6 +105,35 @@ export function LazyFileTree({
     setExpandedPaths(nextExpandedPaths)
     setFocusedPath(null)
   }, [caseInsensitivePaths, identity])
+
+  React.useEffect(() => {
+    if (!restoredExpandedPaths) return
+    const next = prepareExpandedPaths(restoredExpandedPaths, caseInsensitivePaths)
+    expandedPathsRef.current = next
+    setExpandedPaths(next)
+  }, [caseInsensitivePaths, identity, restoredExpandedPaths])
+
+  React.useEffect(() => {
+    if (!revealSelectedPath || !selectedPath) return
+    const selected = keyForPath(selectedPath)
+    const root = keyForPath(rootPath)
+    const prefix = root.endsWith("/") ? root : `${root}/`
+    if (!selected.startsWith(prefix)) return
+    const parents = selected.slice(prefix.length).split("/").slice(0, -1)
+    const next = new Set(expandedPathsRef.current)
+    let parent = prefix.slice(0, -1)
+    for (const segment of parents) {
+      parent += `/${segment}`
+      next.add(parent)
+    }
+    expandedPathsRef.current = next
+    setExpandedPaths(next)
+    setFocusedPath(selected)
+  }, [identity, keyForPath, restoredExpandedPaths, revealSelectedPath, rootPath, selectedPath])
+
+  React.useEffect(() => {
+    onExpandedPathsChange?.([...expandedPaths])
+  }, [expandedPaths, onExpandedPathsChange])
 
   React.useEffect(
     () => () => {
@@ -327,10 +364,16 @@ export function LazyFileTree({
             style={rowStyle}
             tabIndex={focusedPath === key ? 0 : -1}
             title={entry.name}
-            onClick={() => {
+            onClick={(event) => {
               setFocusedPath(key)
               if (isDirectory && !isCycle) toggleDirectory(entry)
-              else if (isFile) onOpenFile(entry)
+              else if (isFile) {
+                if (event.detail < 2 || !onKeepFileOpen) onOpenFile(entry)
+              }
+            }}
+            onDoubleClick={() => {
+              if (!isFile || !onKeepFileOpen) return
+              onKeepFileOpen(entry)
             }}
             onContextMenu={() => onContextEntryChange?.(entry)}
             onFocus={() => setFocusedPath(key)}
