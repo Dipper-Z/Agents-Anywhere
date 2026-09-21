@@ -2,6 +2,7 @@
 
 
 import * as React from "react"
+import "./session-tool-sidebar.css"
 import { createPortal } from "react-dom"
 import type { LucideIcon } from "lucide-react"
 import {
@@ -778,7 +779,7 @@ export function SessionToolSidebar({
                 aria-hidden={!panelActive}
                 inert={!panelActive || undefined}
                 className={cn(
-                  "absolute inset-0 min-h-0 overflow-hidden",
+                  "aa-session-tool-panel absolute inset-0 min-h-0 overflow-hidden",
                   panelActive ? "visible pointer-events-auto" : "invisible pointer-events-none",
                 )}
               >

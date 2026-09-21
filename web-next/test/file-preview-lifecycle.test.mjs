@@ -334,7 +334,8 @@ test("a new preview collapses on the first click and preserves its tree and resi
 
 test("new file tabs share the tree and split while preserving drafts in existing editors", async t => {
   const visibilityStyles = document.createElement("style")
-  visibilityStyles.textContent = ".visible { visibility: visible; } .invisible { visibility: hidden; }"
+  visibilityStyles.textContent = ".visible { visibility: visible; } .invisible { visibility: hidden; } button { transition: all 150ms; }"
+    + readFileSync(new URL("../src/components/session-tool-sidebar.css", import.meta.url), "utf8")
   document.head.append(visibilityStyles)
   t.after(() => visibilityStyles.remove())
   const lists = []
@@ -387,15 +388,21 @@ test("new file tabs share the tree and split while preserving drafts in existing
   // The sidebar hides the whole workspace when review/terminal is selected.
   // Its active document must inherit that visibility, not override it.
   f.host.style.visibility = "hidden"
+  f.host.classList.add("aa-session-tool-panel")
+  f.host.setAttribute("aria-hidden", "true")
   await f.render({ ...props, tabs: [a, previewC], activeTabId: "review" })
   const activeDocument = f.host.querySelector('[data-file-tab-id="b"]')
   const inactiveDocument = f.host.querySelector('[data-file-tab-id="a"]')
   assert.equal(getComputedStyle(activeDocument).visibility, "hidden")
   assert.equal(getComputedStyle(inactiveDocument).visibility, "hidden")
+  const fileButton = activeDocument.querySelector("button")
+  assert.equal(getComputedStyle(fileButton).transition, "none")
   f.host.style.visibility = "visible"
+  f.host.setAttribute("aria-hidden", "false")
   await f.render({ ...props, tabs: [a, previewC], activeTabId: "b" })
   assert.equal(getComputedStyle(activeDocument).visibility, "visible")
   assert.equal(getComputedStyle(inactiveDocument).visibility, "hidden")
+  assert.equal(getComputedStyle(fileButton).transition, "all 150ms")
   assert.equal(editors.length, editorCount)
   assert.equal(editorA.getValue(), "unsaved draft")
   await f.render({ ...props, tabs: [a], activeTabId: "a" })
