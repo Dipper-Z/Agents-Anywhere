@@ -180,7 +180,7 @@ export function FilesPanelBody({
   React.useEffect(() => {
     const token = tokenRef.current
     const requestId = ++loadRequestIdRef.current
-    const initialPath = isWindowsConnector ? "" : effectiveRoot
+    const initialPath = effectiveRoot
     setPath(initialPath)
     setCurrentPath(initialPath)
     setEntries([])
@@ -504,7 +504,8 @@ export function FilesPanelBody({
           <ScrollArea className="aa-fs-browser">
             <LazyFileTree
               identity={`${connectorId ?? ""}:${effectiveRoot}:${connectorDeviceOs ?? ""}:${currentPath}`}
-              rootPath={currentPath || effectiveRoot}
+              // An empty Windows path is the all-drives root, not a missing path.
+              rootPath={currentPath}
               entries={sortedEntries}
               rootLoading={loading}
               rootError={error}
@@ -602,7 +603,7 @@ export function FilesPanelBody({
 
   if (variant === "tab") {
     const breadcrumbPath = treeAllowed
-      ? selectedFile?.path || currentPath || effectiveRoot
+      ? selectedFile?.path || (isWindowsConnector && currentPath === "" ? t("allDrives") : currentPath)
       : selectedFile?.name || initialFile?.name || "."
     const previewPane = (
       <section className="aa-fs-preview" aria-label={t("preview")}>
