@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { SessionAgentIcon } from "@/components/sidebar/session-agent-icon"
 import { OverflowMarquee } from "@/components/sidebar/overflow-marquee"
 import {
   SidebarMenuButton,
@@ -33,6 +34,7 @@ import {
 import { copyText } from "@/lib/clipboard"
 import { cn } from "@/lib/utils"
 import { useTranslations } from "next-intl"
+import { useWorkspace } from "@/components/workspace-context"
 
 
 export function SessionSidebarItem({
@@ -44,7 +46,7 @@ export function SessionSidebarItem({
   onToggleArchive,
   onRename,
 }: {
-  item: { id: string; title?: string | null; status: string; unread: boolean; pinned: boolean; archived: boolean }
+  item: { runtime: string; runtimeType?: string; id: string; connectorId: string; projectId?: string | null; cwd?: string | null; title?: string | null; status: string; unread: boolean; pinned: boolean; archived: boolean }
   inset?: boolean
   isActive: boolean
   onOpen: () => void
@@ -55,6 +57,12 @@ export function SessionSidebarItem({
   const t = useTranslations("dashboard")
   const tSession = useTranslations("dashboard.session")
   const tCommon = useTranslations("common")
+  const { connectors, projects, sidebarShowsSessions } = useWorkspace()
+  const deviceName = connectors.find((connector) => connector.id === item.connectorId)?.name ?? item.connectorId
+  const projectName = projects.find((project) => project.id === item.projectId)?.name
+    || item.cwd?.split(/[\\/]/).filter(Boolean).pop()
+  const contextLabel = [projectName, deviceName].filter(Boolean).join(" · ")
+  const showContext = sidebarShowsSessions && !inset && Boolean(contextLabel)
   const [renameOpen, setRenameOpen] = React.useState(false)
   const [titleDraft, setTitleDraft] = React.useState(item.title ?? "")
   const [renaming, setRenaming] = React.useState(false)
@@ -118,17 +126,26 @@ export function SessionSidebarItem({
                 onClick={onOpen}
                 className={cn(
                   "text-muted-foreground data-[active=true]:text-foreground",
-                  inset && "pl-9",
+                  showContext && "h-auto flex-col items-stretch gap-1",
+                  inset && "pl-9 has-[>svg:first-child]:pl-9",
                   !hasStatusIndicator && "group-hover/session:pr-[4.25rem] group-focus-within/session:pr-[4.25rem]",
                   isActive && !hasStatusIndicator && "pr-[4.25rem]",
                 )}
               >
-                <OverflowMarquee text={item.title ?? ""} active={nameHovered} />
-                <SessionSidebarIndicator
-                  busy={isBusy}
-                  unreadIdle={isUnreadIdle}
-                  waitingApproval={isWaitingApproval}
-                />
+                <span className="flex min-w-0 w-full items-center gap-2">
+                  <SessionAgentIcon runtime={item.runtime} runtimeType={item.runtimeType} />
+                  <OverflowMarquee text={item.title ?? ""} active={nameHovered} />
+                  <SessionSidebarIndicator
+                    busy={isBusy}
+                    unreadIdle={isUnreadIdle}
+                    waitingApproval={isWaitingApproval}
+                  />
+                </span>
+                {showContext ? (
+                  <span className="truncate text-xs font-normal text-muted-foreground" title={contextLabel}>
+                    {contextLabel}
+                  </span>
+                ) : null}
               </SidebarMenuButton>
             </div>
           </ContextMenuTrigger>
@@ -138,6 +155,7 @@ export function SessionSidebarItem({
               <div
                 className={cn(
                   "absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5",
+                  showContext && "top-4",
                   "group-hover/session:flex group-focus-within/session:flex",
                   isActive && "flex",
                 )}
