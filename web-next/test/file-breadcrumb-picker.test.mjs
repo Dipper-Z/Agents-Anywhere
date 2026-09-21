@@ -41,6 +41,77 @@ const click = async (element) => { assert.ok(element); await act(async () => ele
 const row = (path) => document.querySelector(`[data-fs-entry-path="${path}"]`)
 const key = async (element, value) => act(async () => element.dispatchEvent(new window.KeyboardEvent("keydown", { key: value, bubbles: true })))
 
+test("expanding another directory does not scroll back to the breadcrumb selection", async t => {
+  const scrolled = []
+  t.mock.method(HTMLElement.prototype, "scrollIntoView", function () { scrolled.push(this.dataset.fsEntryPath) })
+  const container = document.createElement("div")
+  document.body.append(container)
+  const root = createRoot(container)
+  t.after(async () => { await act(async () => root.unmount()); container.remove() })
+  const leaf = { name: "readme.md", path: "/repo/docs/readme.md", type: "file" }
+  let resolveDirectory
+  const props = {
+    identity: "scroll-test", rootPath: "/repo", entries: [directory, sibling], canLoad: true,
+    selectedPath: directory.path,
+    labels: { empty: "empty", loading: "loading", noConnector: "offline", retry: "retry", truncated: "truncated" },
+    loadDirectory: () => new Promise(resolve => { resolveDirectory = resolve }),
+    onOpenFile() {},
+  }
+  const frame = () => act(async () => { await new Promise(resolve => window.requestAnimationFrame(resolve)) })
+  await act(async () => root.render(h(LazyFileTree, props)))
+  await frame()
+  assert.deepEqual(scrolled, [directory.path])
+  await click(row(sibling.path))
+  await frame()
+  assert.deepEqual(scrolled, [directory.path])
+  await act(async () => resolveDirectory({ path: sibling.path, entries: [leaf] }))
+  await frame()
+  assert.deepEqual(scrolled, [directory.path])
+  assert.ok(row(leaf.path))
+  await act(async () => root.render(h(LazyFileTree, { ...props, selectedPath: leaf.path })))
+  await frame()
+  assert.deepEqual(scrolled, [directory.path, leaf.path])
+  await click(row(sibling.path))
+  await frame()
+  assert.deepEqual(scrolled, [directory.path, leaf.path])
+})
+
+test("scroll restoration waits for expanded siblings and runs only once", async t => {
+  const container = document.createElement("div")
+  document.body.append(container)
+  const root = createRoot(container)
+  t.after(async () => { await act(async () => root.unmount()); container.remove() })
+  const viewport = document.createElement("div")
+  let restored = 0
+  let top = 0
+  Object.defineProperty(viewport, "scrollTop", { get: () => top, set: value => { restored++; top = value } })
+  const scrolls = []
+  t.mock.method(HTMLElement.prototype, "scrollIntoView", () => scrolls.push(true))
+  let resolveDirectory
+  const props = {
+    identity: "restored-scroll", rootPath: "/repo", entries: [sibling, file], canLoad: true,
+    selectedPath: file.path, initialExpandedPaths: [sibling.path],
+    restoredScroll: { top: 650, left: 12 }, scrollViewportRef: { current: viewport },
+    labels: { empty: "empty", loading: "loading", noConnector: "offline", retry: "retry", truncated: "truncated" },
+    loadDirectory: () => new Promise(resolve => { resolveDirectory = resolve }), onOpenFile() {},
+  }
+  const frame = () => act(async () => { await new Promise(resolve => window.requestAnimationFrame(resolve)) })
+  await act(async () => root.render(h(LazyFileTree, props)))
+  await frame()
+  assert.equal(restored, 0)
+  await act(async () => resolveDirectory({ path: sibling.path, entries: [] }))
+  await frame()
+  assert.equal(top, 650)
+  assert.equal(viewport.scrollLeft, 12)
+  assert.equal(restored, 1)
+  assert.deepEqual(scrolls, [])
+  top = 500
+  await click(row(sibling.path))
+  await frame()
+  assert.equal(top, 500)
+  assert.equal(restored, 1)
+})
+
 test("picker opens siblings, expands the current directory, and selects files", async (t) => {
   const calls = []
   const picker = await mount(t, async (path) => {

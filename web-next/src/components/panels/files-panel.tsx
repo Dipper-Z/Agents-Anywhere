@@ -89,6 +89,7 @@ type FilesPanelBodyProps = {
   onOpenFilePreview?: OpenSessionFilePreview
   onKeepFileOpen?: () => void
   onSelectedFileNameChange?: (name: string | null) => void
+  previewContent?: React.ReactNode
 }
 
 export function FilesPanelBody({
@@ -105,6 +106,7 @@ export function FilesPanelBody({
   onDirtyChange,
   onOpenFilePreview,
   onKeepFileOpen,
+  previewContent,
 }: FilesPanelBodyProps) {
   const { ref: panelRef, compact } = useCompactPanel()
   const t = useTranslations("dashboard.panels.files")
@@ -136,6 +138,7 @@ export function FilesPanelBody({
   const directoryContextRef = React.useRef<string | null>(null)
   const directoryContext = `${connectorId}:${effectiveRoot}:${connectorDeviceOs ?? ""}`
   const treePanelRef = React.useRef<PanelImperativeHandle | null>(null)
+  const treeViewportRef = React.useRef<HTMLDivElement | null>(null)
 
   const { confirmDiscard, discardDialog } = useDiscardFileChanges()
   const dirtyRef = React.useRef(false)
@@ -399,7 +402,7 @@ export function FilesPanelBody({
     [connectorId, effectiveRoot, t, token],
   )
 
-  const openEntry = async (entry: FsEntry, keepOpen = false) => {
+  const openEntry = async (entry: FsEntry, keepOpen = false, fromBreadcrumb = false) => {
     if (variant === "tab" && entry.path === selectedFile?.path) {
       if (keepOpen) onKeepFileOpen?.()
       return
@@ -415,6 +418,10 @@ export function FilesPanelBody({
         source: "workspace", name: entry.name, path: entry.path, root: effectiveRoot,
         browsePath: withinTree ? currentPath : filePathBreadcrumbParent(entry.path),
         browseExpandedPaths: withinTree ? [...expandedTreePathsRef.current] : [],
+        browseScroll: withinTree && !fromBreadcrumb && treeViewportRef.current ? {
+          top: treeViewportRef.current.scrollTop,
+          left: treeViewportRef.current.scrollLeft,
+        } : undefined,
       }, { preview: !keepOpen })
       return
     }
@@ -550,7 +557,7 @@ export function FilesPanelBody({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div className="flex min-h-0 flex-1 flex-col">
-          <ScrollArea className="aa-fs-browser">
+          <ScrollArea className="aa-fs-browser" viewportRef={treeViewportRef}>
             <LazyFileTree
               identity={`${connectorId ?? ""}:${effectiveRoot}:${connectorDeviceOs ?? ""}:${currentPath}`}
               rootPath={currentPath || effectiveRoot}
@@ -564,6 +571,8 @@ export function FilesPanelBody({
               revealSelectedPath
               initialExpandedPaths={initialFile?.browseExpandedPaths}
               restoredExpandedPaths={initialFile?.browseExpandedPaths}
+              restoredScroll={initialFile?.browseScroll}
+              scrollViewportRef={treeViewportRef}
               onExpandedPathsChange={handleExpandedPathsChange}
               labels={{
                 empty: t("empty"),
@@ -660,7 +669,7 @@ export function FilesPanelBody({
       : selectedFile?.name || initialFile?.name || "."
     const previewPane = (
       <section className="aa-fs-preview" aria-label={t("preview")}>
-        {selectedFile ? (
+        {selectedFile ? previewContent ?? (
           <FilePreviewSurface
             key={`${connectorId}:${effectiveRoot}:${selectedFile.source}:${selectedFile.sourceUrl ?? ""}`}
             token={token ?? null}
@@ -713,7 +722,7 @@ export function FilesPanelBody({
                   directory={!current || !selectedFile}
                   caseInsensitivePaths={isWindowsConnector}
                   loadDirectory={loadTreeDirectory}
-                  onSelect={(entry) => void openEntry(entry)}
+                  onSelect={(entry) => void openEntry(entry, false, true)}
                   onBrowse={onKeepFileOpen}
                 />
               ) : undefined}

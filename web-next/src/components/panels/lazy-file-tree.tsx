@@ -34,6 +34,8 @@ type LazyFileTreeProps = {
   revealSelectedPath?: boolean
   initialExpandedPaths?: readonly string[]
   restoredExpandedPaths?: readonly string[]
+  restoredScroll?: { top: number; left: number }
+  scrollViewportRef?: React.RefObject<HTMLDivElement | null>
   onExpandedPathsChange?: (paths: string[]) => void
   labels: LazyFileTreeLabels
   loadDirectory: (path: string) => Promise<FsListResult>
@@ -65,6 +67,8 @@ export function LazyFileTree({
   revealSelectedPath = false,
   initialExpandedPaths = [],
   restoredExpandedPaths,
+  restoredScroll,
+  scrollViewportRef,
   onExpandedPathsChange,
   labels,
   loadDirectory,
@@ -236,14 +240,49 @@ export function LazyFileTree({
     [],
   )
 
+  const scrollTargetRef = React.useRef<{
+    identity: string
+    selectedKey: string | null
+    restoredScroll: typeof restoredScroll
+    revealed: boolean
+  } | null>(null)
+
   React.useEffect(() => {
+    if (scrollTargetRef.current?.identity !== identity || scrollTargetRef.current.selectedKey !== selectedKey
+      || scrollTargetRef.current.restoredScroll !== restoredScroll) {
+      scrollTargetRef.current = { identity, selectedKey, restoredScroll, revealed: false }
+    }
+    const target = scrollTargetRef.current
     if (!selectedKey) return
+    if (target.revealed) return
+    if (restoredScroll) {
+      // Wait for every visible expanded branch, including siblings above the
+      // selection, so restoring an offset isn't clamped to an incomplete tree.
+      const pending = (entries: FsEntry[], ancestors = new Set([keyForPath(rootPath)])): boolean => entries.some(entry => {
+        const key = keyForPath(entry.path)
+        if (entry.type !== "directory" || !expandedPaths.has(key) || ancestors.has(key)) return false
+        const branch = branchStates.get(key)
+        return !branch || branch.status === "loading"
+          || (branch.status === "loaded" && pending(branch.entries, new Set([...ancestors, key])))
+      })
+      if (rootLoading || pending(rootEntries)) return
+    }
     const frame = window.requestAnimationFrame(() => {
       const selectedItem = visibleTreeItems().find((item) => item.dataset.treeKey === selectedKey)
-      selectedItem?.scrollIntoView({ block: "nearest" })
+      if (!selectedItem) return
+      if (restoredScroll && scrollViewportRef?.current) {
+        scrollViewportRef.current.scrollTop = restoredScroll.top
+        scrollViewportRef.current.scrollLeft = restoredScroll.left
+        target.revealed = true
+        return
+      }
+      // Retry while ancestors load, but don't undo the user's scrolling when
+      // they subsequently expand or collapse another directory.
+      target.revealed = true
+      selectedItem.scrollIntoView({ block: "nearest" })
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [branchStates, expandedPaths, rootEntries, selectedKey, visibleTreeItems])
+  }, [branchStates, expandedPaths, identity, keyForPath, restoredScroll, rootEntries, rootLoading, rootPath, scrollViewportRef, selectedKey, visibleTreeItems])
 
   const focusTreeItem = React.useCallback((item: HTMLElement | undefined) => {
     if (!item) return

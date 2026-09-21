@@ -13,6 +13,7 @@ export type SessionFilePreviewTarget = {
   // Supplied by a directory listing: the target is already a resolved file.
   browsePath?: string
   browseExpandedPaths?: readonly string[]
+  browseScroll?: { top: number; left: number }
 }
 
 export type SessionFileOpenOptions = { preview?: boolean; sourceTabId?: string }

@@ -159,6 +159,7 @@ export function sessionToolTabsReducer(
             ...tab.filePreview!,
             browsePath: file.browsePath,
             browseExpandedPaths: file.browseExpandedPaths,
+            browseScroll: file.browseScroll,
           } : tab.filePreview,
         } : tab),
       }

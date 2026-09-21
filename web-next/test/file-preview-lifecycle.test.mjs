@@ -55,6 +55,8 @@ const mockHooks = registerHooks({
 })
 const { FilePreviewSurface } = await import("../src/components/file-preview-page.tsx")
 const { FilesPanelBody } = await import("../src/components/panels/files-panel.tsx")
+const { SessionFilesWorkspace } = await import("../src/components/session-files-workspace.tsx")
+const { createSessionFilePreviewTab } = await import("../src/components/session-tool-tabs.ts")
 const { dashboardApi } = await import("../src/features/dashboard/api.ts")
 const messages = JSON.parse(readFileSync(new URL("../messages/en.json", import.meta.url), "utf8"))
 const textFile = (path) => ({ binary: false, path, name: path.split("/").at(-1), content: path, sha256: path, size: 10, truncated: false })
@@ -144,9 +146,17 @@ test("a newly mounted preview inherits nested expansion from the fixed file tab"
   for (const path of ["/repo/src", "/repo/src/nested"]) {
     await act(async () => fixed.host.querySelector(`[data-fs-entry-path="${path}"]`).click())
   }
+  const viewport = fixed.host.querySelector('.aa-fs-browser [data-slot="scroll-area-viewport"]')
+  viewport.scrollTop = 650
+  viewport.scrollLeft = 12
   await act(async () => fixed.host.querySelector('[data-fs-entry-path="/repo/src/nested/b.ts"]').click())
+  assert.deepEqual(opened.browseScroll, { top: 650, left: 12 })
   const preview = await fixture(t, FilesPanelBody)
   await preview.render({ ...props, initialFile: opened })
+  await act(async () => { await new Promise(resolve => window.requestAnimationFrame(resolve)) })
+  const nextViewport = preview.host.querySelector('.aa-fs-browser [data-slot="scroll-area-viewport"]')
+  assert.equal(nextViewport.scrollTop, 650)
+  assert.equal(nextViewport.scrollLeft, 12)
   for (const path of ["/repo/src", "/repo/src/nested"]) {
     assert.equal(preview.host.querySelector(`[data-fs-entry-path="${path}"]`).getAttribute("aria-expanded"), "true")
   }
@@ -320,6 +330,59 @@ test("a new preview collapses on the first click and preserves its tree and resi
   assert.equal(f.host.querySelector('[role="tree"]'), tree)
   assert.equal(f.host.querySelector('[data-fs-entry-path="/repo/src"]').getAttribute("aria-expanded"), "true")
   assert.equal(listings, before)
+})
+
+test("new file tabs share the tree and split while preserving drafts in existing editors", async t => {
+  const lists = []
+  const reads = []
+  let resolveNewFile
+  t.mock.method(dashboardApi, "connectorFsList", async (_token, _connector, { path }) => {
+    lists.push(path)
+    return { result: { path, entries: path === "/repo"
+      ? [{ name: "src", path: "/repo/src", type: "directory" }]
+      : [{ name: "b.ts", path: "/repo/src/b.ts", type: "file" }] } }
+  })
+  t.mock.method(dashboardApi, "connectorFsReadText", async (_token, _connector, _root, path) => {
+    reads.push(path)
+    return path.endsWith("b.ts") ? new Promise(resolve => { resolveNewFile = resolve }) : textFile(path)
+  })
+  const f = await fixture(t, SessionFilesWorkspace)
+  const props = { token: "fixture", connectorId: "connector", root: "/repo", onDirtyChange() {}, onTitleChange() {}, onPinTab() {}, onOpenFilePreview() {} }
+  const a = createSessionFilePreviewTab("a", { source: "workspace", root: "/repo", path: "/repo/a.ts", name: "a.ts", browsePath: "/repo" })
+  const b = createSessionFilePreviewTab("b", { source: "workspace", root: "/repo", path: "/repo/src/b.ts", name: "b.ts", browsePath: "/repo" })
+  await f.render({ ...props, tabs: [{ ...a, filePreview: null }], activeTabId: "a" })
+  await act(async () => f.host.querySelector('[data-fs-entry-path="/repo/src"]').click())
+  const tree = f.host.querySelector('[role="tree"]')
+  const split = f.host.querySelector('[data-testid="files-tree"]')
+  await f.render({ ...props, tabs: [a], activeTabId: "a" })
+  assert.equal(f.host.querySelector('[role="tree"]'), tree)
+  const editorA = editors.at(-1)
+  editorA.model.content = "unsaved draft"
+  await f.render({ ...props, tabs: [a, b], activeTabId: "b" })
+  assert.equal(f.host.querySelector('[role="tree"]'), tree)
+  assert.equal(f.host.querySelector('[data-testid="files-tree"]'), split)
+  assert.deepEqual(lists, ["/repo", "/repo/src"])
+  await act(async () => resolveNewFile(textFile(b.filePreview.path)))
+  const editorB = editors.at(-1)
+  await f.render({ ...props, tabs: [a, b], activeTabId: "a" })
+  assert.equal(editorA.disposed, false)
+  assert.equal(editorA.getValue(), "unsaved draft")
+  assert.equal(f.host.querySelector('[data-file-tab-id="a"]').getAttribute("aria-hidden"), "false")
+  assert.deepEqual(reads, ["/repo/a.ts", "/repo/src/b.ts"])
+  assert.deepEqual(lists, ["/repo", "/repo/src"])
+  const previewC = { ...b, filePreview: { ...b.filePreview, name: "c.ts", path: "/repo/src/c.ts" } }
+  const editorCount = editors.length
+  await f.render({ ...props, tabs: [a, previewC], activeTabId: "b" })
+  assert.equal(editors.length, editorCount)
+  assert.equal(editorB.getValue(), "/repo/src/c.ts")
+  assert.equal(f.host.querySelector('[role="tree"]'), tree)
+  // Switching to a terminal must not reset the hidden workspace to its first file.
+  await f.render({ ...props, tabs: [a, previewC], activeTabId: "terminal" })
+  assert.equal(f.host.querySelector('[data-file-tab-id="b"]').getAttribute("aria-hidden"), "false")
+  assert.equal(editorA.getValue(), "unsaved draft")
+  await f.render({ ...props, tabs: [a], activeTabId: "a" })
+  assert.equal(editorB.disposed, true)
+  assert.equal(editorA.disposed, false)
 })
 
 test.after(() => { mockHooks.deregister(); sourceHooks.deregister() })

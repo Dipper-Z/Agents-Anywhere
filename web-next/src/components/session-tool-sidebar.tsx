@@ -24,6 +24,8 @@ import { useAuth } from "@/components/auth/auth-context"
 import { useWorkspace, type PanelId } from "@/components/workspace-context"
 import { Button } from "@/components/ui/button"
 import { WorkspaceHeader } from "@/components/workspace-header"
+import { SessionToolTabStrip } from "@/components/session-tool-tab-strip"
+import { SessionFilesWorkspace } from "@/components/session-files-workspace"
 import { WorkspaceSidebarToggleButton } from "@/components/workspace-sidebar-toggle-button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -39,6 +41,7 @@ import {
   type SessionToolKind,
   type SessionToolTabsAction,
   type SessionToolTabsState,
+  type SessionToolTab,
 } from "@/components/session-tool-tabs"
 import {
   useSessionToolSidebarStore,
@@ -484,6 +487,16 @@ export function SessionToolSidebar({
   const { confirmDiscard, discardDialog } = useDiscardFileChanges()
   const domIdPrefix = React.useId()
   const tabButtonRefs = React.useRef(new Map<string, HTMLButtonElement>())
+  const fileWorkspaceGroups = React.useMemo(() => {
+    const groups = new Map<string, SessionToolTab[]>()
+    for (const tab of controller.tabs) {
+      if (tab.kind !== "files" || tab.filePreview?.source !== "workspace") continue
+      const group = groups.get(tab.filePreview.root) ?? []
+      group.push(tab)
+      groups.set(tab.filePreview.root, group)
+    }
+    return groups
+  }, [controller.tabs])
   const newTabButtonRef = React.useRef<HTMLButtonElement | null>(null)
   const launcherButtonRef = React.useRef<HTMLButtonElement | null>(null)
   const resizeStateRef = React.useRef<{
@@ -651,12 +664,7 @@ export function SessionToolSidebar({
       {discardDialog}
       <WorkspaceHeader>
         {fillsMain ? <span aria-hidden="true" className="size-7 shrink-0" /> : null}
-        <div
-          role="tablist"
-          aria-label={t("tabsLabel")}
-          className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
-          onKeyDown={handleTabKeyDown}
-        >
+        <SessionToolTabStrip label={t("tabsLabel")} onKeyDown={handleTabKeyDown}>
           {controller.tabs.map((tab) => {
             const meta = TOOL_META[tab.kind]
             const Icon = meta.icon
@@ -718,7 +726,7 @@ export function SessionToolSidebar({
               </div>
             )
           })}
-        </div>
+        </SessionToolTabStrip>
 
         <ToolMenu
           triggerRef={newTabButtonRef}
@@ -751,12 +759,19 @@ export function SessionToolSidebar({
             onOpenTool={onOpenTool}
           />
         ) : (
-          controller.tabs.map((tab) => {
+          controller.tabs.map((listedTab) => {
+            const emptyWorkspaceBrowser = listedTab.kind === "files" && !listedTab.filePreview
+              && !fileWorkspaceGroups.has(root)
+            const workspaceRoot = listedTab.filePreview?.source === "workspace"
+              ? listedTab.filePreview.root : emptyWorkspaceBrowser ? root : null
+            const fileTabs = workspaceRoot === null ? [] : fileWorkspaceGroups.get(workspaceRoot) ?? [listedTab]
+            if (fileTabs.length && fileTabs[0]!.id !== listedTab.id) return null
+            const tab = fileTabs.find(item => item.id === controller.activeTabId) ?? listedTab
             const active = controller.activeTabId === tab.id
             const panelActive = presented && controller.open && active
             return (
               <section
-                key={tab.id}
+                key={workspaceRoot === null ? tab.id : `files-workspace:${workspaceRoot}`}
                 id={`${domIdPrefix}-panel-${tab.id}`}
                 role="tabpanel"
                 aria-labelledby={`${domIdPrefix}-tab-${tab.id}`}
@@ -790,7 +805,12 @@ export function SessionToolSidebar({
                     creationError={tab.error}
                   />
                 ) : null}
-                {tab.kind === "files" ? (
+                {tab.kind === "files" && fileTabs.length > 0 ? (
+                  <SessionFilesWorkspace tabs={fileTabs} activeTabId={controller.activeTabId ?? tab.id}
+                    token={token} connectorId={connectorId} connectorDeviceOs={connectorDeviceOs} root={root}
+                    onDirtyChange={controller.setTabDirty}
+                    onOpenFilePreview={controller.openFilePreview} onPinTab={controller.pinTab} />
+                ) : tab.kind === "files" ? (
                   <SessionFilesToolPanel
                     tabId={tab.id}
                     filePreview={tab.filePreview}
