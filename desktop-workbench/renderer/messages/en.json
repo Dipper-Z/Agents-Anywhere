@@ -683,7 +683,6 @@
     },
     "panels": {
       "files": {
-        "allDrives": "All drives",
         "addToComposer": "Add to Composer",
         "addToComposerNoSession": "Enable Takeover in a session to add this path.",
         "title": "Files",

@@ -683,7 +683,6 @@
     },
     "panels": {
       "files": {
-        "allDrives": "所有盘符",
         "addToComposer": "添加到 Composer",
         "addToComposerNoSession": "需要在已开启接管的会话里才能添加到 Composer。",
         "title": "文件",
