@@ -333,6 +333,10 @@ test("a new preview collapses on the first click and preserves its tree and resi
 })
 
 test("new file tabs share the tree and split while preserving drafts in existing editors", async t => {
+  const visibilityStyles = document.createElement("style")
+  visibilityStyles.textContent = ".visible { visibility: visible; } .invisible { visibility: hidden; }"
+  document.head.append(visibilityStyles)
+  t.after(() => visibilityStyles.remove())
   const lists = []
   const reads = []
   let resolveNewFile
@@ -379,6 +383,20 @@ test("new file tabs share the tree and split while preserving drafts in existing
   // Switching to a terminal must not reset the hidden workspace to its first file.
   await f.render({ ...props, tabs: [a, previewC], activeTabId: "terminal" })
   assert.equal(f.host.querySelector('[data-file-tab-id="b"]').getAttribute("aria-hidden"), "false")
+  assert.equal(editorA.getValue(), "unsaved draft")
+  // The sidebar hides the whole workspace when review/terminal is selected.
+  // Its active document must inherit that visibility, not override it.
+  f.host.style.visibility = "hidden"
+  await f.render({ ...props, tabs: [a, previewC], activeTabId: "review" })
+  const activeDocument = f.host.querySelector('[data-file-tab-id="b"]')
+  const inactiveDocument = f.host.querySelector('[data-file-tab-id="a"]')
+  assert.equal(getComputedStyle(activeDocument).visibility, "hidden")
+  assert.equal(getComputedStyle(inactiveDocument).visibility, "hidden")
+  f.host.style.visibility = "visible"
+  await f.render({ ...props, tabs: [a, previewC], activeTabId: "b" })
+  assert.equal(getComputedStyle(activeDocument).visibility, "visible")
+  assert.equal(getComputedStyle(inactiveDocument).visibility, "hidden")
+  assert.equal(editors.length, editorCount)
   assert.equal(editorA.getValue(), "unsaved draft")
   await f.render({ ...props, tabs: [a], activeTabId: "a" })
   assert.equal(editorB.disposed, true)

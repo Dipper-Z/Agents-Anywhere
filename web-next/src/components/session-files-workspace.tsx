@@ -59,7 +59,7 @@ const FileDocument = React.memo(function FileDocument({ tab, active, token, conn
   const file = tab.filePreview!
   const dirty = React.useCallback((value: boolean) => onDirtyChange(tab.id, value), [onDirtyChange, tab.id])
   return (
-    <div className={`absolute inset-0 ${active ? "visible" : "invisible pointer-events-none"}`}
+    <div className={`absolute inset-0 ${active ? "" : "invisible pointer-events-none"}`}
       aria-hidden={!active} inert={!active || undefined} data-file-tab-id={tab.id}>
       <FilePreviewSurface token={token ?? ""} connectorId={connectorId ?? ""} root={file.root}
         initialPath={file.path} initialName={file.name} mode="embedded" onDirtyChange={dirty}
