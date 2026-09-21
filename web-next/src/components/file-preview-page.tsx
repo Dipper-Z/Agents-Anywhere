@@ -37,6 +37,7 @@ import { dashboardApi } from "@/features/dashboard/api"
 import { loadStoredSession } from "@/features/auth/session"
 import type { FsEntry, FsPreviewSessionResponse, FsReadTextResult } from "@/features/dashboard/types"
 import { cn } from "@/lib/utils"
+import { filePathBreadcrumbSegments } from "@/lib/file-path-breadcrumb"
 
 type PreviewState =
   | { kind: "loading" }
@@ -110,26 +111,21 @@ type FilePreviewSurfaceProps = {
   onOpenExternal?: () => void
 }
 
-export function FilePathBreadcrumb({ path }: { path: string }) {
+export function FilePathBreadcrumb({ path, renderSegment }: {
+  path: string
+  renderSegment?: (segment: { label: string; path: string }, current: boolean) => React.ReactNode
+}) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null)
   const contentRef = React.useRef<HTMLDivElement | null>(null)
-  const [overflowed, setOverflowed] = React.useState(false)
   const normalizedPath = path.trim().replaceAll("\\", "/") || "."
-  const segments = React.useMemo(() => {
-    const values = normalizedPath.split("/").filter(Boolean)
-    return values.length > 0
-      ? values
-      : normalizedPath.startsWith("/")
-        ? []
-        : [normalizedPath]
-  }, [normalizedPath])
+  const segments = React.useMemo(() => filePathBreadcrumbSegments(normalizedPath), [normalizedPath])
 
   React.useLayoutEffect(() => {
     const viewport = viewportRef.current
     const content = contentRef.current
     if (!viewport || !content) return
 
-    const measure = () => setOverflowed(content.scrollWidth > viewport.clientWidth + 1)
+    const measure = () => { viewport.scrollLeft = viewport.scrollWidth }
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(viewport)
@@ -141,23 +137,22 @@ export function FilePathBreadcrumb({ path }: { path: string }) {
     <div
       ref={viewportRef}
       className="aa-file-preview-breadcrumb-viewport min-w-0 flex-1"
-      data-overflowed={overflowed ? "true" : "false"}
       dir="ltr"
       title={normalizedPath}
       aria-label={normalizedPath}
     >
-      <div ref={contentRef} className="aa-file-preview-breadcrumb" aria-hidden="true">
+      <div ref={contentRef} className="aa-file-preview-breadcrumb">
         {segments.map((segment, index) => (
-          <React.Fragment key={`${segment}:${index}`}>
-            {index > 0 ? <ChevronRight className="aa-file-preview-breadcrumb-separator" /> : null}
-            <span
-              className={cn(
-                "aa-file-preview-breadcrumb-segment",
-                index === segments.length - 1 && "current",
-              )}
-            >
-              {segment}
-            </span>
+          <React.Fragment key={segment.path}>
+            {index > 0 ? <ChevronRight aria-hidden="true" className="aa-file-preview-breadcrumb-separator" /> : null}
+            {renderSegment ? renderSegment(segment, index === segments.length - 1) : (
+              <span
+                className={cn("aa-file-preview-breadcrumb-segment", index === segments.length - 1 && "current")}
+                aria-current={index === segments.length - 1 ? "location" : undefined}
+              >
+                {segment.label}
+              </span>
+            )}
           </React.Fragment>
         ))}
       </div>

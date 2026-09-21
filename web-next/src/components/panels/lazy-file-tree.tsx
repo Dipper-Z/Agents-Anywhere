@@ -257,7 +257,7 @@ export function LazyFileTree({
       if (event.key === "ArrowRight" && current.dataset.treeKind === "directory") {
         event.preventDefault()
         if (current.getAttribute("aria-expanded") !== "true") {
-          current.click()
+          current.querySelector<HTMLElement>("[data-tree-toggle]")?.click()
           return
         }
         const currentKey = current.dataset.treeKey
@@ -269,7 +269,7 @@ export function LazyFileTree({
         const parentKey = current.dataset.treeParentKey
         if (current.dataset.treeKind === "directory" && current.getAttribute("aria-expanded") === "true") {
           event.preventDefault()
-          current.click()
+          current.querySelector<HTMLElement>("[data-tree-toggle]")?.click()
           return
         }
         if (parentKey && parentKey !== currentKey) {
@@ -314,7 +314,7 @@ export function LazyFileTree({
             aria-expanded={isDirectory && !isCycle ? isExpanded : undefined}
             aria-level={depth + 1}
             aria-posinset={index + 1}
-            aria-selected={isFile ? selectedKey === key : undefined}
+            aria-selected={isFile || isDirectory ? selectedKey === key : undefined}
             aria-setsize={siblings.length}
             className={cn("aa-file-tree-row", selectedKey === key && "active")}
             data-aa-file-tree-item="true"
@@ -336,7 +336,7 @@ export function LazyFileTree({
             onFocus={() => setFocusedPath(key)}
             onKeyDown={handleItemKeyDown}
           >
-            <span className="aa-file-tree-leading" aria-hidden="true">
+            <span className="aa-file-tree-leading" data-tree-toggle={isDirectory ? "true" : undefined} aria-hidden="true">
               {isDirectory ? (
                 branch?.status === "loading" && isExpanded ? (
                   <LoaderCircle className="aa-file-tree-spinner" />

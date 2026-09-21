@@ -12,7 +12,6 @@ import {
   Plus,
   SquareTerminal,
   X,
-  PanelRight,
 } from "lucide-react"
 import { useTranslations } from "next-intl"
 
@@ -24,6 +23,8 @@ import { useDiscardFileChanges } from "@/components/discard-file-changes-dialog"
 import { useAuth } from "@/components/auth/auth-context"
 import { useWorkspace, type PanelId } from "@/components/workspace-context"
 import { Button } from "@/components/ui/button"
+import { WorkspaceHeader } from "@/components/workspace-header"
+import { WorkspaceSidebarToggleButton } from "@/components/workspace-sidebar-toggle-button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   DropdownMenu,
@@ -644,8 +645,8 @@ export function SessionToolSidebar({
       ) : null}
 
       {discardDialog}
-      {/* Keep buttons aligned with the chat header while trimming the space below them. */}
-      <div className={cn("flex h-12 shrink-0 items-center gap-1 bg-background px-2 pt-2", fillsMain && "pl-10")}>
+      <WorkspaceHeader>
+        {fillsMain ? <span aria-hidden="true" className="size-7 shrink-0" /> : null}
         <div
           role="tablist"
           aria-label={t("tabsLabel")}
@@ -661,6 +662,14 @@ export function SessionToolSidebar({
             return (
               <div
                 key={tab.id}
+                onMouseDown={(event) => {
+                  if (event.button === 1) event.preventDefault()
+                }}
+                onAuxClick={(event) => {
+                  if (event.button !== 1) return
+                  event.preventDefault()
+                  void closeTabAndRestoreFocus(tab.id)
+                }}
                 className={cn(
                   "group flex min-w-24 max-w-48 shrink-0 items-center overflow-hidden rounded-xl transition-colors hover:bg-secondary focus-within:bg-secondary",
                   active && "bg-secondary text-secondary-foreground",
@@ -725,12 +734,10 @@ export function SessionToolSidebar({
           >
             {controller.expanded ? <Minimize2 /> : <Maximize2 />}
           </Button>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={controller.collapseSidebar}
-            aria-label={t("collapse")} title={t("collapse")} data-slot="session-tool-sidebar-toggle">
-            <PanelRight />
-          </Button>
+          <WorkspaceSidebarToggleButton side="right" aria-expanded={controller.open} onClick={controller.collapseSidebar}
+            aria-label={t("collapse")} title={t("collapse")} data-slot="session-tool-sidebar-toggle" />
         </div>
-      </div>
+      </WorkspaceHeader>
 
       <div className="relative min-h-0 flex-1 overflow-hidden bg-background">
         {controller.tabs.length === 0 ? (

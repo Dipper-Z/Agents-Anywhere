@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/resizable"
 import { FilePathBreadcrumb, FilePreviewSurface } from "@/components/file-preview-page"
 import { LazyFileTree } from "@/components/panels/lazy-file-tree"
+import { FileBreadcrumbPicker } from "@/components/panels/file-breadcrumb-picker"
 import type { SessionFilePreviewTarget } from "@/components/session/session-file-preview-context"
 import {
   findSessionFileTargetEntry,
@@ -649,8 +650,21 @@ export function FilesPanelBody({
         {discardDialog}
         <CardContent className="aa-rt-content">
           <header className="aa-fs-shared-header">
-            <FilePathBreadcrumb path={breadcrumbPath} />
-            {treeAllowed ? (
+            <FilePathBreadcrumb
+              path={breadcrumbPath}
+              renderSegment={treeAllowed && canLoad ? (segment, current) => (
+                <FileBreadcrumbPicker
+                  key={`${connectorId}:${effectiveRoot}:${segment.path}`}
+                  {...segment}
+                  current={current}
+                  directory={!current || !selectedFile}
+                  caseInsensitivePaths={isWindowsConnector}
+                  loadDirectory={loadTreeDirectory}
+                  onSelect={(entry) => void openEntry(entry)}
+                />
+              ) : undefined}
+            />
+            {treeAllowed && selectedFile ? (
               <TooltipProvider delayDuration={500}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -679,13 +693,12 @@ export function FilesPanelBody({
               direction={compact ? "vertical" : "horizontal"}
               className={cn("aa-fs-workspace", treeResizeActive && "is-resizing")}
             >
-              <ResizablePanel id="files-preview" defaultSize="60%" minSize="35%">
+              {selectedFile ? <ResizablePanel id="files-preview" defaultSize="60%" minSize="35%">
                 {previewPane}
-              </ResizablePanel>
+              </ResizablePanel> : null}
 
-              <ResizableHandle
+              {selectedFile ? <ResizableHandle
                 className={cn("aa-fs-tree-resize-handle", !treeOpen && "hidden")}
-                showSeparator={false}
                 title={t("resizeTree")}
                 aria-label={t("resizeTree")}
                 onPointerDown={(event) => {
@@ -700,16 +713,16 @@ export function FilesPanelBody({
                 }}
                 onPointerCancel={() => setTreeResizeActive(false)}
                 onLostPointerCapture={() => setTreeResizeActive(false)}
-              />
+              /> : null}
 
               <ResizablePanel
                 id="files-tree"
                 panelRef={treePanelRef}
-                collapsible
+                collapsible={Boolean(selectedFile)}
                 collapsedSize="0px"
-                defaultSize="40%"
+                defaultSize={selectedFile ? (treeOpen ? "40%" : "0%") : "100%"}
                 minSize={compact ? "20%" : "160px"}
-                maxSize="65%"
+                maxSize={selectedFile ? "65%" : "100%"}
                 groupResizeBehavior="preserve-pixel-size"
                 onResize={(size) => {
                   const collapsed = treePanelRef.current?.isCollapsed() ?? size.inPixels <= 1
