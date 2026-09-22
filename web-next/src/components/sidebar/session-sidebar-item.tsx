@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
 import { SessionAgentIcon } from "@/components/sidebar/session-agent-icon"
 import { OverflowMarquee } from "@/components/sidebar/overflow-marquee"
 import {
@@ -127,7 +128,7 @@ export function SessionSidebarItem({
                 className={cn(
                   "text-muted-foreground data-[active=true]:text-foreground",
                   showContext && "h-auto flex-col items-stretch gap-1",
-                  inset && "pl-9 has-[>svg:first-child]:pl-9",
+                  inset && "pl-6 has-[>svg:first-child]:pl-6",
                   !hasStatusIndicator && "group-hover/session:pr-[4.25rem] group-focus-within/session:pr-[4.25rem]",
                   isActive && !hasStatusIndicator && "pr-[4.25rem]",
                 )}
@@ -149,6 +150,12 @@ export function SessionSidebarItem({
               </SidebarMenuButton>
             </div>
           </ContextMenuTrigger>
+
+          {showContext ? (
+            <div className="pointer-events-none absolute inset-x-3 bottom-0 group-last/session:hidden">
+              <Separator />
+            </div>
+          ) : null}
 
           {!hasStatusIndicator ? (
             <TooltipProvider delayDuration={300}>
