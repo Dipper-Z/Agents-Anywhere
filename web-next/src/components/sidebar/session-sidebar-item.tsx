@@ -62,7 +62,7 @@ export function SessionSidebarItem({
   const deviceName = connectors.find((connector) => connector.id === item.connectorId)?.name ?? item.connectorId
   const projectName = projects.find((project) => project.id === item.projectId)?.name
     || item.cwd?.split(/[\\/]/).filter(Boolean).pop()
-  const contextLabel = [projectName, deviceName].filter(Boolean).join(" · ")
+  const contextLabel = [deviceName, projectName].filter(Boolean).join(" · ")
   const showContext = sidebarShowsSessions && !inset && Boolean(contextLabel)
   const [renameOpen, setRenameOpen] = React.useState(false)
   const [titleDraft, setTitleDraft] = React.useState(item.title ?? "")
@@ -143,9 +143,11 @@ export function SessionSidebarItem({
                   />
                 </span>
                 {showContext ? (
-                  <span className="truncate text-xs font-normal text-muted-foreground" title={contextLabel}>
-                    {contextLabel}
-                  </span>
+                  <OverflowMarquee
+                    text={contextLabel}
+                    active={nameHovered}
+                    className="w-full flex-none text-xs font-normal text-muted-foreground"
+                  />
                 ) : null}
               </SidebarMenuButton>
             </div>
