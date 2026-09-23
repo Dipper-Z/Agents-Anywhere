@@ -9,4 +9,3 @@ from connector.runtimes.dsh.provider import DshProvider
 
 def default_runtime_providers() -> tuple[RuntimeProvider, ...]:
     return (CodexProvider(), ClaudeProvider(), DshProvider(), AntigravityProvider())
-
